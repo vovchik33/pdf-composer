@@ -12,6 +12,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Generated CLI output
+output/
+
 # Generated output and tooling caches
 coverage/
 dist/

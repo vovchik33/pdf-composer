@@ -1,0 +1,20 @@
+{
+  "name": "pdf-composer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local CLI for PDF and image workflows.",
+  "type": "module",
+  "bin": {
+    "pdf-composer": "./cli.js"
+  },
+  "scripts": {
+    "start": "node cli.js --help"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.68",
+    "@inquirer/prompts": "^7.5.0",
+    "archiver": "^7.0.1",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38"
+  }
+}
