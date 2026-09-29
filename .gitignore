@@ -14,6 +14,7 @@ pnpm-debug.log*
 
 # Generated CLI output
 output/
+.web-data/
 
 # Generated output and tooling caches
 coverage/

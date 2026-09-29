@@ -1,18 +1,21 @@
 ---
-description: Project-wide rules for the PDF Composer local Node.js CLI
+description: Project-wide rules for the PDF Composer CLI and web server
 alwaysApply: true
 ---
 
 # PDF Composer Project Rules
 
-PDF Composer is a local Node.js ESM CLI. The main implementation is `cli.js`;
-package metadata and the executable are in `package.json`; user documentation
-is in `README.md`.
+PDF Composer is a Node.js ESM project with a local CLI and an optional web
+server. The CLI is in `cli.js`, the web server is in `web-server.js`, shared
+web processing is in `lib/pdf-processing.js`, package metadata is in
+`package.json`, and user documentation is in `README.md`.
 
 ## Preserve behavior
 
 - Keep all PDF and image processing local; do not add network-dependent
   behavior.
+- Keep web functionality additive so existing CLI commands, aliases,
+  interactive mode, and default output filenames remain unchanged.
 - Preserve existing command names, aliases, interactive mode, and default
   output filenames unless the user explicitly requests a change.
 - Use existing dependencies and make focused changes.
@@ -34,9 +37,20 @@ is in `README.md`.
   `npm config list --location=project`.
 - Do not expose or commit authentication tokens or user-level npm settings.
 
+## Web server
+
+- Enforce file type, per-file, total-upload, and file-count limits.
+- Store uploads in per-job temporary directories and expire them.
+- Require `WEB_AUTH_TOKEN` when `NODE_ENV=production`.
+- Keep authentication in headers; do not put credentials in download URLs.
+- Remote deployments require TLS and platform-level authentication/rate
+  limiting as appropriate.
+
 ## Validation
 
 - CLI edits: run `node --check cli.js` and `npm start`.
+- Web edits: run `node --check web-server.js` and exercise health, upload,
+  reorder, export, authentication, and cleanup paths.
 - Parser changes: test accepted and rejected argument forms, including
   `--output` ordering.
 - PDF workflow changes: use small representative inputs and verify outputs.

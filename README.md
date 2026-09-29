@@ -161,6 +161,34 @@ Running `pdf-composer` without a command starts the same interactive workflow.
 
 Before each action starts, the CLI prints the equivalent command so you can copy it and run the same work again.
 
+## Web application
+
+Run the upload and reorder web application with:
+
+```bash
+npm run web
+```
+
+Open `http://localhost:3000`. Upload PDF and image files; PDF pages are
+rendered into the same sortable list. The page can download the current list
+as one PDF or as a ZIP containing numbered images.
+
+The server accepts these environment variables:
+
+- `PORT` (default `3000`)
+- `HOST` (default `0.0.0.0`)
+- `WEB_AUTH_TOKEN` (required when `NODE_ENV=production`)
+- `MAX_FILE_SIZE` (default `25 MB per file`)
+- `MAX_TOTAL_UPLOAD` (default `100 MB per upload`)
+- `JOB_TTL_MS` (default one hour)
+- `WORK_DIR` (default `.web-data`)
+
+For a remote deployment, configure `NODE_ENV=production` and a long random
+`WEB_AUTH_TOKEN`, terminate TLS at the hosting platform, and add platform
+authentication and rate limiting as appropriate. Jobs are kept in temporary
+server storage, survive a clean server restart, and expire after the
+configured TTL; they are not a permanent document store.
+
 ## Development
 
 The help output is available through the npm start script:

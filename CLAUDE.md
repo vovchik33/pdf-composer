@@ -2,7 +2,7 @@
 
 Read and follow `AGENTS.md` for the shared PDF Composer development rules.
 
-This is a local Node.js ESM CLI. Keep PDF processing local, preserve existing command behavior and default filenames, and keep `cli.js`, `README.md`, and help output consistent.
+This is a Node.js ESM project with a local CLI and an optional PDF/image web server. Keep CLI processing local, preserve existing command behavior and default filenames, and keep `cli.js`, `README.md`, and help output consistent.
 
 All CLI output paths use `--output <file>`. If used, `--output` must be the final parameter. Validate this rule in parser changes and document every new command with a working example.
 
@@ -10,7 +10,9 @@ Treat the repository `.npmrc` as the project npm configuration. Run npm commands
 
 Validate files, numeric values, page ranges, and unsupported formats with actionable errors. Keep parser behavior, CLI help, README usage, and examples synchronized. Preserve existing command names, aliases, interactive mode, and default output filenames unless explicitly requested otherwise.
 
-Before finishing code changes, run the narrowest relevant checks. At minimum, use `node --check cli.js` and `npm start` for CLI edits, test accepted and rejected argument forms for parser changes, verify generated files for PDF workflow changes, and use `git diff --check` for documentation or rule edits.
+For the web server, enforce upload size and type limits, use per-job temporary storage with expiry cleanup, require `WEB_AUTH_TOKEN` in production, and never place credentials in URLs, source control, or browser-visible markup. Keep the web server additive so CLI behavior remains unchanged.
+
+Before finishing code changes, run the narrowest relevant checks. At minimum, use `node --check cli.js` and `npm start` for CLI edits, `node --check web-server.js` for web edits, test accepted and rejected argument forms for parser changes, verify generated files for PDF workflow changes, and use `git diff --check` for documentation or rule edits.
 
 ## Available development skills
 

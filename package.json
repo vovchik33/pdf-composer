@@ -8,12 +8,16 @@
     "pdf-composer": "./cli.js"
   },
   "scripts": {
-    "start": "node cli.js --help"
+    "start": "node cli.js --help",
+    "web": "node web-server.js",
+    "test:web": "node --test test/web-server.test.js"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^0.1.68",
     "@inquirer/prompts": "^7.5.0",
+    "@napi-rs/canvas": "^0.1.68",
     "archiver": "^7.0.1",
+    "express": "5.2.1",
+    "multer": "2.4.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38"
   }
