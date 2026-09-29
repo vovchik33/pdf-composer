@@ -26,9 +26,9 @@ const HELP = `PDF Composer - local PDF and image CLI
 Usage:
   pdf-composer
   pdf-composer interactive
-  pdf-composer pdf-to-images <input.pdf> [--quality medium] [--output images-folder]
+  pdf-composer pdf-to-images <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output images-folder]
   pdf-composer images-to-pdf <image...> [--output merged.pdf]
-  pdf-composer compress <input.pdf> [--quality medium] [--output compressed.pdf]
+  pdf-composer compress <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output compressed.pdf]
   pdf-composer filter-pages <input.pdf> "1, 3, 5-7, 9-" [--output filtered.pdf]
   pdf-composer booklet <input.pdf> <start-page> <total-page-count> <booklet-count> [--output booklet.pdf]
   pdf-composer book <input.pdf> <start-page> <total-page-count> <booklet-count> [--output booklet.pdf]
@@ -48,14 +48,25 @@ Quality:
   lowest | lower | low | medium | high | highest
   Quality controls PDF-to-image resolution and JPEG compression.
 
+Alignment:
+  Interactive pdf-to-images and compress ask whether to align pages after quality.
+  Values are in rendered pixels. Rotation is clockwise degrees around the origin.
+  --origin 0,0
+  --rotate 0
+  --shift 0,0
+  --scale 1,1
+  --crop 0,0,width,height   width and height mean the full page size
+
 Output:
   Generated PDFs are written under the output/ folder.
   --output takes a filename; for example --output report.pdf saves output/report.pdf.
   pdf-to-images writes a folder of JPGs next to the source PDF by default.
+  Before processing, the equivalent pdf-composer command is printed so you can run it again.
 
 Examples:
   pdf-composer
   pdf-composer pdf-to-images report.pdf --quality high
+  pdf-composer pdf-to-images scan.pdf --quality high --rotate 1.2 --shift 8,-4 --crop 20,20,1200,1600
   pdf-composer images-to-pdf page-1.jpg page-2.png --output report.pdf
   pdf-composer filter-pages report.pdf "1, 3, 5-7, 9-" --output selected.pdf
   pdf-composer booklet report.pdf 1 80 2 --output report-booklet.pdf
@@ -76,6 +87,34 @@ const ACTIONS = [
 function fail(message) {
   console.error(`Error: ${message}`);
   process.exitCode = 1;
+}
+
+function shellQuote(value) {
+  const text = String(value);
+  if (text === '') return "''";
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(text)) return text;
+  return `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+function formatCliCommand(args) {
+  return ['pdf-composer', ...args.map(shellQuote)].join(' ');
+}
+
+function alignmentFlags(alignment) {
+  if (!alignment) return [];
+  const cropWidth = alignment.cropWidth ?? 'width';
+  const cropHeight = alignment.cropHeight ?? 'height';
+  return [
+    '--origin', `${alignment.originX},${alignment.originY}`,
+    '--rotate', String(alignment.rotate),
+    '--shift', `${alignment.shiftX},${alignment.shiftY}`,
+    '--scale', `${alignment.scaleX},${alignment.scaleY}`,
+    '--crop', `${alignment.cropX},${alignment.cropY},${cropWidth},${cropHeight}`,
+  ];
+}
+
+function printReplayCommand(args) {
+  console.log(formatCliCommand(args));
 }
 
 function parseArgs(args) {
@@ -103,6 +142,74 @@ function qualityProfile(value) {
   if (!value) return QUALITY.medium;
   if (!QUALITY[value]) throw new Error(`Unknown quality "${value}". Use: ${Object.keys(QUALITY).join(', ')}`);
   return QUALITY[value];
+}
+
+function parseNumberToken(value, label) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) throw new Error(`Invalid ${label} "${value}".`);
+  return number;
+}
+
+function parseNumberList(value, expected, label) {
+  const parts = String(value ?? '').replace(/[\[\]()]/g, '').split(',').map((part) => part.trim()).filter(Boolean);
+  if (parts.length !== expected) throw new Error(`${label} must have ${expected} values.`);
+  return parts;
+}
+
+function parseAlignment(values) {
+  const [originX, originY] = parseNumberList(values.origin ?? '0,0', 2, 'Origin point').map((part) => parseNumberToken(part, 'origin'));
+  const rotate = parseNumberToken(String(values.rotate ?? '0').replace(/[\[\]()]/g, '').trim(), 'rotate');
+  const [shiftX, shiftY] = parseNumberList(values.shift ?? '0,0', 2, 'Shift Page').map((part) => parseNumberToken(part, 'shift'));
+  const [scaleX, scaleY] = parseNumberList(values.scale ?? '1,1', 2, 'Scale Page').map((part) => parseNumberToken(part, 'scale'));
+  const cropParts = parseNumberList(values.crop ?? '0,0,width,height', 4, 'Crop page');
+  const cropX = parseNumberToken(cropParts[0], 'crop');
+  const cropY = parseNumberToken(cropParts[1], 'crop');
+  const cropWidth = /^(width|w)$/i.test(cropParts[2]) ? null : parseNumberToken(cropParts[2], 'crop');
+  const cropHeight = /^(height|h)$/i.test(cropParts[3]) ? null : parseNumberToken(cropParts[3], 'crop');
+  return { originX, originY, rotate, shiftX, shiftY, scaleX, scaleY, cropX, cropY, cropWidth, cropHeight };
+}
+
+function alignmentFromOptions(options) {
+  if (!options.origin && options.rotate === undefined && !options.shift && !options.scale && !options.crop) return null;
+  return parseAlignment(options);
+}
+
+function isIdentityAlignment(alignment, width, height) {
+  if (!alignment) return true;
+  const cropWidth = alignment.cropWidth ?? width;
+  const cropHeight = alignment.cropHeight ?? height;
+  return alignment.rotate === 0
+    && alignment.shiftX === 0
+    && alignment.shiftY === 0
+    && alignment.scaleX === 1
+    && alignment.scaleY === 1
+    && alignment.cropX === 0
+    && alignment.cropY === 0
+    && cropWidth === width
+    && cropHeight === height;
+}
+
+function applyPageAlignment(sourceCanvas, alignment) {
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  if (isIdentityAlignment(alignment, width, height)) return sourceCanvas;
+
+  const cropWidth = Math.round(alignment.cropWidth ?? width);
+  const cropHeight = Math.round(alignment.cropHeight ?? height);
+  if (cropWidth < 1 || cropHeight < 1) throw new Error('Crop width and height must be positive.');
+
+  const output = createCanvas(cropWidth, cropHeight);
+  const context = output.getContext('2d');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, cropWidth, cropHeight);
+  context.translate(-alignment.cropX, -alignment.cropY);
+  context.translate(alignment.shiftX, alignment.shiftY);
+  context.translate(alignment.originX, alignment.originY);
+  context.rotate((alignment.rotate * Math.PI) / 180);
+  context.scale(alignment.scaleX, alignment.scaleY);
+  context.translate(-alignment.originX, -alignment.originY);
+  context.drawImage(sourceCanvas, 0, 0);
+  return output;
 }
 
 function resolveOutputPath(requestedPath) {
@@ -165,6 +272,18 @@ async function promptQuality(ask) {
   return promptChoice(ask, 'Choose image quality:', Object.keys(QUALITY).map((name) => [name, name]));
 }
 
+async function promptAlignment(ask) {
+  const answer = (await promptText(ask, 'Align pages? (y/n)', 'n')).toLowerCase();
+  if (answer !== 'y' && answer !== 'yes') return null;
+  return parseAlignment({
+    origin: await promptText(ask, 'Origin point', '0,0'),
+    rotate: await promptText(ask, 'Rotate Page by angle clockwise direction', '0'),
+    shift: await promptText(ask, 'Shift Page', '0,0'),
+    scale: await promptText(ask, 'Scale Page', '1,1'),
+    crop: await promptText(ask, 'Crop page', '0,0,width,height'),
+  });
+}
+
 async function interactive() {
   const scriptedAnswers = [];
   if (!stdin.isTTY) {
@@ -191,13 +310,15 @@ async function interactive() {
         if (!inputPath) throw new Error('Input PDF is required.');
         const outputPath = await promptText(ask, 'Output folder', defaultImagesFolder(inputPath));
         const quality = await promptQuality(ask);
-        await pdfToImages(inputPath, outputPath, quality);
+        const alignment = await promptAlignment(ask);
+        await pdfToImages(inputPath, outputPath, quality, alignment);
       } else if (command === 'compress') {
         const inputPath = await promptText(ask, 'Input PDF');
         if (!inputPath) throw new Error('Input PDF is required.');
         const quality = await promptQuality(ask);
+        const alignment = await promptAlignment(ask);
         const outputPath = await promptText(ask, 'Target PDF', outputName(inputPath, 'compressed', 'pdf'));
-        await compressPdf(inputPath, outputPath, quality);
+        await compressPdf(inputPath, outputPath, quality, alignment);
       } else if (command === 'filter-pages') {
         const inputPath = await promptText(ask, 'Input PDF');
         if (!inputPath) throw new Error('Input PDF is required.');
@@ -232,7 +353,7 @@ async function interactive() {
   }
 }
 
-async function renderPages(inputPath, quality) {
+async function renderPages(inputPath, quality, alignment) {
   const bytes = await readFile(inputPath);
   const standardFontDataUrl = `${path.resolve('node_modules/pdfjs-dist/standard_fonts')}${path.sep}`;
   const document = await pdfjsLib.getDocument({ data: new Uint8Array(bytes), disableWorker: true, standardFontDataUrl }).promise;
@@ -243,14 +364,24 @@ async function renderPages(inputPath, quality) {
     const viewport = page.getViewport({ scale: profile.scale });
     const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
     await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    pages.push({ name: `page-${String(pageNumber).padStart(3, '0')}.jpg`, bytes: canvas.toBuffer('image/jpeg', profile.jpeg) });
+    const aligned = applyPageAlignment(canvas, alignment);
+    pages.push({ name: `page-${String(pageNumber).padStart(3, '0')}.jpg`, bytes: aligned.toBuffer('image/jpeg', profile.jpeg) });
   }
   return pages;
 }
 
-async function pdfToImages(inputPath, requestedOutput, quality) {
+async function pdfToImages(inputPath, requestedOutput, quality, alignment) {
   const outputPath = resolvePdfToImagesOutput(inputPath, requestedOutput);
-  const pages = await renderPages(inputPath, quality);
+  printReplayCommand([
+    'pdf-to-images',
+    inputPath,
+    '--quality',
+    quality || 'medium',
+    ...alignmentFlags(alignment),
+    '--output',
+    outputPath,
+  ]);
+  const pages = await renderPages(inputPath, quality, alignment);
   const writeZip = outputPath.toLowerCase().endsWith('.zip');
   await mkdir(writeZip ? path.dirname(path.resolve(outputPath)) : outputPath, { recursive: true });
   if (writeZip) {
@@ -270,9 +401,18 @@ async function pdfToImages(inputPath, requestedOutput, quality) {
   console.log(`Created ${outputPath} (${pages.length} images, ${quality || 'medium'} quality)`);
 }
 
-async function compressPdf(inputPath, requestedOutput, quality) {
+async function compressPdf(inputPath, requestedOutput, quality, alignment) {
   const outputPath = resolveOutputPath(requestedOutput || outputName(inputPath, 'compressed', 'pdf'));
-  const pages = await renderPages(inputPath, quality);
+  printReplayCommand([
+    'compress',
+    inputPath,
+    '--quality',
+    quality || 'medium',
+    ...alignmentFlags(alignment),
+    '--output',
+    outputPath,
+  ]);
+  const pages = await renderPages(inputPath, quality, alignment);
   const pdf = await PDFDocument.create();
 
   for (const pageImage of pages) {
@@ -313,6 +453,7 @@ function parsePageSelection(value, sourcePageCount) {
 
 async function filterPages(inputPath, requestedPages, requestedOutput) {
   const outputPath = resolveOutputPath(requestedOutput || outputName(inputPath, 'filtered', 'pdf'));
+  printReplayCommand(['filter-pages', inputPath, requestedPages, '--output', outputPath]);
   const source = await PDFDocument.load(await readFile(inputPath));
   const sourcePageCount = source.getPageCount();
   const pageNumbers = parsePageSelection(requestedPages, sourcePageCount);
@@ -345,6 +486,7 @@ async function createBooklet(inputPath, requestedStartPage, requestedTotalPageCo
   const paddedTotalPageCount = pageCount * bookletCount;
 
   const outputPath = resolveOutputPath(requestedOutput || bookletOutputName(inputPath));
+  printReplayCommand(['booklet', inputPath, startPage, totalPageCount, bookletCount, '--output', outputPath]);
   const source = await PDFDocument.load(await readFile(inputPath));
   const output = await PDFDocument.create();
   const sourcePageCount = source.getPageCount();
@@ -392,6 +534,7 @@ function bookletOutputName(inputPath) {
 
 async function imagesToPdf(inputPaths, requestedOutput) {
   const outputPath = resolveOutputPath(requestedOutput || 'merged-images.pdf');
+  printReplayCommand(['images-to-pdf', ...inputPaths, '--output', outputPath]);
   const pdf = await PDFDocument.create();
   for (const inputPath of inputPaths) {
     const bytes = await readFile(inputPath);
@@ -406,6 +549,7 @@ async function imagesToPdf(inputPaths, requestedOutput) {
 
 async function combine(inputPaths, mode, requestedOutput) {
   const outputPath = resolveOutputPath(requestedOutput || (mode === 'merge' ? 'combined.pdf' : 'alternating-pages.pdf'));
+  printReplayCommand([mode, ...inputPaths, '--output', outputPath]);
   const output = await PDFDocument.create();
   const documents = await Promise.all(inputPaths.map(async (inputPath) => PDFDocument.load(await readFile(inputPath))));
   if (mode === 'merge') {
@@ -445,14 +589,14 @@ async function main() {
   }
   const { positional, options } = parseArgs(rawArgs);
   if (command === 'pdf-to-images') {
-    if (positional.length !== 1) throw new Error('Usage: pdf-to-images <input.pdf> [--quality medium] [--output images-folder]');
-    await pdfToImages(positional[0], options.output, options.quality);
+    if (positional.length !== 1) throw new Error('Usage: pdf-to-images <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output images-folder]');
+    await pdfToImages(positional[0], options.output, options.quality, alignmentFromOptions(options));
   } else if (command === 'images-to-pdf') {
     if (positional.length < 1) throw new Error('Provide at least one JPG or PNG image.');
     await imagesToPdf(positional, options.output);
   } else if (command === 'compress') {
-    if (positional.length !== 1) throw new Error('Usage: compress <input.pdf> [--quality medium] [--output compressed.pdf]');
-    await compressPdf(positional[0], options.output, options.quality);
+    if (positional.length !== 1) throw new Error('Usage: compress <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output compressed.pdf]');
+    await compressPdf(positional[0], options.output, options.quality, alignmentFromOptions(options));
   } else if (command === 'filter-pages' || command === 'filter') {
     if (positional.length !== 2) throw new Error('Usage: filter-pages <input.pdf> "1, 3, 5-7, 9-" [--output filtered.pdf]');
     await filterPages(positional[0], positional[1], options.output);

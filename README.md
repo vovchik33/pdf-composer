@@ -43,9 +43,9 @@ pdf-composer --help
 ```text
 pdf-composer
 pdf-composer interactive
-pdf-composer pdf-to-images <input.pdf> [--quality medium] [--output images-folder]
+pdf-composer pdf-to-images <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output images-folder]
 pdf-composer images-to-pdf <image...> [--output merged.pdf]
-pdf-composer compress <input.pdf> [--quality medium] [--output compressed.pdf]
+pdf-composer compress <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output compressed.pdf]
 pdf-composer filter-pages <input.pdf> "1, 3, 5-7, 9-" [--output filtered.pdf]
 pdf-composer booklet <input.pdf> <start-page> <total-page-count> <booklet-count> [--output booklet.pdf]
 pdf-composer zip <first.pdf> <second.pdf> [--output alternating.pdf]
@@ -68,6 +68,12 @@ Render every page as a JPG. By default the images go in a `report-images` folder
 pdf-composer pdf-to-images report.pdf --quality high
 ```
 
+To rotate, nudge, scale, or crop scanned pages (values are rendered pixels; rotation is clockwise around the origin):
+
+```bash
+pdf-composer pdf-to-images scan.pdf --quality high --origin 0,0 --rotate 1.2 --shift 8,-4 --scale 1,1 --crop 20,20,1200,1600
+```
+
 ### Images to PDF
 
 Create a PDF from images in the order provided:
@@ -83,6 +89,8 @@ Rebuild a PDF from rendered images using the selected quality:
 ```bash
 pdf-composer compress large-report.pdf --quality medium --output smaller-report.pdf
 ```
+
+The same alignment options as `pdf-to-images` can be used when compressing.
 
 ### Filter pages
 
@@ -128,6 +136,10 @@ lowest | lower | low | medium | high | highest
 
 Quality affects PDF-to-image resolution and JPEG compression. If omitted, `medium` is used.
 
+In interactive mode, `pdf-to-images` and `compress` ask whether to align pages after quality. If you choose yes, the prompts are origin `[0,0]`, clockwise rotate `[0]`, shift `[0,0]`, scale `[1,1]`, and crop `[0,0,width,height]`.
+
+On the command line those same values are `--origin`, `--rotate`, `--shift`, `--scale`, and `--crop`. `width` and `height` in crop mean the full rendered page size.
+
 Generated PDFs are written under the `output/` folder (created if needed). `--output` takes a filename such as `report.pdf`; that file is saved as `output/report.pdf`. When `--output` is provided, it must be the final parameter.
 
 `pdf-to-images` defaults to a `{name}-images` folder next to the source PDF.
@@ -141,6 +153,8 @@ pdf-composer interactive
 ```
 
 Running `pdf-composer` without a command starts the same interactive workflow.
+
+Before each action starts, the CLI prints the equivalent command so you can copy it and run the same work again.
 
 ## Development
 
