@@ -12,6 +12,8 @@ PDF Composer is a local Node.js ESM CLI for PDF and image workflows. The main im
 - Keep CLI help text, README examples, and parser behavior synchronized.
 - Prefer the existing dependencies and small focused changes over new abstractions.
 - Do not commit generated PDFs, `node_modules`, logs, environment files, or build artifacts.
+- Treat the repository `.npmrc` as the project npm configuration. Run npm commands from the project root or use `--location=project`; verify it with `npm config list --location=project`. Never expose or commit authentication tokens or user-level npm settings.
+- Validate files, numeric values, page ranges, and unsupported formats with actionable errors.
 
 ## Useful commands
 
@@ -22,7 +24,7 @@ node --check cli.js
 git diff --check
 ```
 
-Run `npm start` after CLI or help-text changes. For parser changes, test both accepted and rejected argument forms. For PDF behavior changes, use small representative input files and verify the generated output.
+Run `npm start` after CLI or help-text changes. For CLI edits, also run `node --check cli.js`. For parser changes, test both accepted and rejected argument forms, including `--output` ordering. For PDF behavior changes, use small representative input files and verify the generated output. For documentation or rule changes, run `git diff --check`.
 
 ## AI-assisted development skills
 

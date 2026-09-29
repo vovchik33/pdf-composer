@@ -44,7 +44,7 @@ pdf-composer --help
 pdf-composer
 pdf-composer interactive
 pdf-composer pdf-to-images <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output images-folder]
-pdf-composer images-to-pdf <image...> [--output merged.pdf]
+pdf-composer images-to-pdf <images-folder> [--output merged.pdf]
 pdf-composer compress <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output compressed.pdf]
 pdf-composer filter-pages <input.pdf> "1, 3, 5-7, 9-" [--output filtered.pdf]
 pdf-composer booklet <input.pdf> <start-page> <total-page-count> <booklet-count> [--output booklet.pdf]
@@ -76,11 +76,16 @@ pdf-composer pdf-to-images scan.pdf --quality high --origin 0,0 --rotate 1.2 --s
 
 ### Images to PDF
 
-Create a PDF from images in the order provided:
+Create a PDF from every JPG and PNG in a folder, sorted by filename:
 
 ```bash
-pdf-composer images-to-pdf page-1.jpg page-2.png --output report.pdf
+pdf-composer images-to-pdf report-images --output report.pdf
 ```
+
+In interactive mode, the default output for `report-images` is
+`output/report-images.pdf`. If that file already exists, you can overwrite it
+or automatically use the next available name, such as
+`output/report-images-1.pdf`.
 
 ### Compress a PDF
 

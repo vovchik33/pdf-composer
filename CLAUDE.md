@@ -6,7 +6,11 @@ This is a local Node.js ESM CLI. Keep PDF processing local, preserve existing co
 
 All CLI output paths use `--output <file>`. If used, `--output` must be the final parameter. Validate this rule in parser changes and document every new command with a working example.
 
-Before finishing code changes, run the narrowest relevant checks. At minimum, use `node --check cli.js` for CLI edits and `npm start` for help or command syntax changes. Use `git diff --check` for documentation edits.
+Treat the repository `.npmrc` as the project npm configuration. Run npm commands from the project root or use `--location=project`; verify it with `npm config list --location=project`. Never expose or commit authentication tokens or user-level npm settings.
+
+Validate files, numeric values, page ranges, and unsupported formats with actionable errors. Keep parser behavior, CLI help, README usage, and examples synchronized. Preserve existing command names, aliases, interactive mode, and default output filenames unless explicitly requested otherwise.
+
+Before finishing code changes, run the narrowest relevant checks. At minimum, use `node --check cli.js` and `npm start` for CLI edits, test accepted and rejected argument forms for parser changes, verify generated files for PDF workflow changes, and use `git diff --check` for documentation or rule edits.
 
 ## Available development skills
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createWriteStream } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { stdin } from 'node:process';
@@ -27,7 +27,7 @@ Usage:
   pdf-composer
   pdf-composer interactive
   pdf-composer pdf-to-images <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output images-folder]
-  pdf-composer images-to-pdf <image...> [--output merged.pdf]
+  pdf-composer images-to-pdf <images-folder> [--output merged.pdf]
   pdf-composer compress <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output compressed.pdf]
   pdf-composer filter-pages <input.pdf> "1, 3, 5-7, 9-" [--output filtered.pdf]
   pdf-composer booklet <input.pdf> <start-page> <total-page-count> <booklet-count> [--output booklet.pdf]
@@ -37,7 +37,7 @@ Usage:
 
 Commands:
   pdf-to-images  Render each PDF page to JPG files in a folder.
-  images-to-pdf  Put JPG/PNG files into one PDF in the order provided.
+  images-to-pdf  Put all JPG/PNG files from a folder into one PDF by filename.
   compress       Rebuild a PDF with the selected image quality.
   filter-pages   Create a PDF containing selected pages and page ranges; use 9- for all pages from 9 to the end.
   booklet        Reorder pages for manual duplex booklet printing.
@@ -61,13 +61,14 @@ Output:
   Generated PDFs are written under the output/ folder.
   --output takes a filename; for example --output report.pdf saves output/report.pdf.
   pdf-to-images writes a folder of JPGs next to the source PDF by default.
+  images-to-pdf defaults to output/<images-folder-name>.pdf and avoids overwriting an existing file in interactive mode.
   Before processing, the equivalent pdf-composer command is printed so you can run it again.
 
 Examples:
   pdf-composer
   pdf-composer pdf-to-images report.pdf --quality high
   pdf-composer pdf-to-images scan.pdf --quality high --rotate 1.2 --shift 8,-4 --crop 20,20,1200,1600
-  pdf-composer images-to-pdf page-1.jpg page-2.png --output report.pdf
+  pdf-composer images-to-pdf report-images --output report.pdf
   pdf-composer filter-pages report.pdf "1, 3, 5-7, 9-" --output selected.pdf
   pdf-composer booklet report.pdf 1 80 2 --output report-booklet.pdf
   pdf-composer zip left.pdf right.pdf --output booklet.pdf
@@ -227,6 +228,31 @@ function defaultImagesFolder(inputPath) {
   return path.join(path.dirname(resolvedInput), `${path.basename(resolvedInput, path.extname(resolvedInput))}-images`);
 }
 
+function defaultImagesPdfOutput(imagesFolder) {
+  return resolveOutputPath(`${path.basename(path.resolve(imagesFolder))}.pdf`);
+}
+
+async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function nextAvailableOutput(outputPath) {
+  const extension = path.extname(outputPath);
+  const basename = outputPath.slice(0, -extension.length);
+  let index = 1;
+  let candidate = `${basename}-${index}${extension}`;
+  while (await fileExists(candidate)) {
+    index += 1;
+    candidate = `${basename}-${index}${extension}`;
+  }
+  return candidate;
+}
+
 function resolvePdfToImagesOutput(inputPath, requestedOutput) {
   if (!requestedOutput) return defaultImagesFolder(inputPath);
   if (path.isAbsolute(requestedOutput) || path.dirname(requestedOutput) !== '.') return requestedOutput;
@@ -336,11 +362,18 @@ async function interactive() {
         if (!outputPath) throw new Error('Target PDF is required.');
         await createBooklet(inputPath, startPage, pageCount, bookletCount, outputPath);
       } else if (command === 'images-to-pdf') {
-        const count = Number(await promptText(ask, 'How many images', '2'));
-        if (!Number.isInteger(count) || count < 1) throw new Error('Image count must be a positive whole number.');
-        const files = await promptFiles(ask, 'Image file', count);
-        const outputPath = await promptText(ask, 'Output PDF', 'merged-images.pdf');
-        await imagesToPdf(files, outputPath);
+        const imagesFolder = await promptText(ask, 'Images folder');
+        if (!imagesFolder) throw new Error('Images folder is required.');
+        const defaultOutput = defaultImagesPdfOutput(imagesFolder);
+        let outputPath = await promptText(ask, 'Output PDF', defaultOutput);
+        if (await fileExists(resolveOutputPath(outputPath))) {
+          const overwrite = (await promptText(ask, `Overwrite ${resolveOutputPath(outputPath)}? (y/n)`, 'n')).toLowerCase();
+          if (overwrite !== 'y' && overwrite !== 'yes') {
+            outputPath = await nextAvailableOutput(resolveOutputPath(outputPath));
+            console.log(`Using available output: ${outputPath}`);
+          }
+        }
+        await imagesToPdf(imagesFolder, outputPath);
       } else {
         const files = await promptFiles(ask, 'Input PDF', 2);
         const defaultOutput = command === 'merge' ? 'combined.pdf' : 'alternating-pages.pdf';
@@ -532,9 +565,15 @@ function bookletOutputName(inputPath) {
   return resolveOutputPath(`${path.basename(inputPath, path.extname(inputPath))}_booklet.pdf`);
 }
 
-async function imagesToPdf(inputPaths, requestedOutput) {
+async function imagesToPdf(imagesFolder, requestedOutput) {
+  const entries = await readdir(imagesFolder, { withFileTypes: true });
+  const imageEntries = entries
+    .filter((entry) => entry.isFile() && /\.(jpe?g|png)$/i.test(entry.name))
+    .sort((first, second) => first.name.localeCompare(second.name, undefined, { numeric: true, sensitivity: 'base' }));
+  if (imageEntries.length === 0) throw new Error(`No JPG or PNG images found in "${imagesFolder}".`);
+  const inputPaths = imageEntries.map((entry) => path.join(imagesFolder, entry.name));
   const outputPath = resolveOutputPath(requestedOutput || 'merged-images.pdf');
-  printReplayCommand(['images-to-pdf', ...inputPaths, '--output', outputPath]);
+  printReplayCommand(['images-to-pdf', imagesFolder, '--output', outputPath]);
   const pdf = await PDFDocument.create();
   for (const inputPath of inputPaths) {
     const bytes = await readFile(inputPath);
@@ -592,8 +631,8 @@ async function main() {
     if (positional.length !== 1) throw new Error('Usage: pdf-to-images <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output images-folder]');
     await pdfToImages(positional[0], options.output, options.quality, alignmentFromOptions(options));
   } else if (command === 'images-to-pdf') {
-    if (positional.length < 1) throw new Error('Provide at least one JPG or PNG image.');
-    await imagesToPdf(positional, options.output);
+    if (positional.length !== 1) throw new Error('Usage: images-to-pdf <images-folder> [--output merged.pdf]');
+    await imagesToPdf(positional[0], options.output);
   } else if (command === 'compress') {
     if (positional.length !== 1) throw new Error('Usage: compress <input.pdf> [--quality medium] [--origin 0,0] [--rotate 0] [--shift 0,0] [--scale 1,1] [--crop 0,0,width,height] [--output compressed.pdf]');
     await compressPdf(positional[0], options.output, options.quality, alignmentFromOptions(options));

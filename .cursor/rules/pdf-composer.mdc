@@ -1,0 +1,46 @@
+---
+description: Project-wide rules for the PDF Composer local Node.js CLI
+alwaysApply: true
+---
+
+# PDF Composer Project Rules
+
+PDF Composer is a local Node.js ESM CLI. The main implementation is `cli.js`;
+package metadata and the executable are in `package.json`; user documentation
+is in `README.md`.
+
+## Preserve behavior
+
+- Keep all PDF and image processing local; do not add network-dependent
+  behavior.
+- Preserve existing command names, aliases, interactive mode, and default
+  output filenames unless the user explicitly requests a change.
+- Use existing dependencies and make focused changes.
+
+## CLI and documentation
+
+- Output paths use `--output <file>`.
+- If `--output` is present, it must be the final command-line parameter.
+- Keep parser behavior, help output, README usage, and examples synchronized.
+- Document every new command with a working example.
+- Validate files, numeric values, page ranges, and unsupported formats with
+  actionable errors.
+
+## npm and installation
+
+- Treat the repository `.npmrc` as the project configuration.
+- Run npm commands from the project root or use `--location=project`.
+- Verify project configuration with:
+  `npm config list --location=project`.
+- Do not expose or commit authentication tokens or user-level npm settings.
+
+## Validation
+
+- CLI edits: run `node --check cli.js` and `npm start`.
+- Parser changes: test accepted and rejected argument forms, including
+  `--output` ordering.
+- PDF workflow changes: use small representative inputs and verify outputs.
+- Documentation or rule changes: run `git diff --check`.
+- Do not commit generated PDFs, `node_modules`, logs, environment files, or
+  build artifacts.
+
